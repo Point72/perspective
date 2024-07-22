@@ -16,6 +16,7 @@ on:
     push:
         branches:
             - master
+            - tkp/cmake30
         tags:
             - v*
         paths-ignore:

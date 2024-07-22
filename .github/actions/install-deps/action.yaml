@@ -60,7 +60,7 @@ runs:
         - name: Setup cmake
           uses: jwlawson/actions-setup-cmake@v2
           with:
-              cmake-version: "3.29.6"
+              cmake-version: "3.30.0"
 
         - name: Install pnpm
           uses: pnpm/action-setup@v3

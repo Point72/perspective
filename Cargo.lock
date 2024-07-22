@@ -2204,9 +2204,9 @@ dependencies = [
 
 [[package]]
 name = "protobuf-src"
-version = "2.0.1+26.1"
+version = "2.1.0+27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8ba1cfa4b9dc098926b8cce388bf434b93516db3ecf6e8b1a37eb643d733ee7"
+checksum = "a7edafa3bcc668fa93efafcbdf58d7821bbda0f4b458ac7fae3d57ec0fec8167"
 dependencies = [
  "cmake",
 ]

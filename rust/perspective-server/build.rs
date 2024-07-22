@@ -77,6 +77,9 @@ fn cmake_build() -> Result<(), std::io::Error> {
                 std::env::var("VCPKG_ROOT").unwrap().replace("\\", "/")
             ),
         );
+        dst.define("protobuf_MSVC_STATIC_RUNTIME", "ON");
+        dst.define("ABSL_MSVC_STATIC_RUNTIME", "ON");
+        dst.define("CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreaded$<$<CONFIG:Debug>:Debug>");
     }
 
     if std::env::var("CARGO_FEATURE_PYTHON").is_ok() {

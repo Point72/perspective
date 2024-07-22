@@ -1,0 +1,24 @@
+From cc84e46a15ddd33fd77a5bc9d3c6a9c3c6ab4080 Mon Sep 17 00:00:00 2001
+From: Tim Paine <3105306+timkpaine@users.noreply.github.com>
+Date: Mon, 15 Jul 2024 22:01:28 -0400
+Subject: [PATCH] .
+
+---
+ third_party/abseil-cpp/absl/container/CMakeLists.txt | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/third_party/abseil-cpp/absl/container/CMakeLists.txt b/third_party/abseil-cpp/absl/container/CMakeLists.txt
+index 128cc0e9..11d65d55 100644
+--- a/third_party/abseil-cpp/absl/container/CMakeLists.txt
++++ b/third_party/abseil-cpp/absl/container/CMakeLists.txt
+@@ -213,6 +213,7 @@ absl_cc_library(
+   DEPS
+     absl::config
+     GTest::gmock
++  TESTONLY
+ )
+
+ absl_cc_test(
+--
+2.44.0
+

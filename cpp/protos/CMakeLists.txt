@@ -23,6 +23,10 @@ if(NOT DEFINED PSP_CMAKE_MODULE_PATH)
     message(STATUS "PSP_CMAKE_MODULE_PATH not defined, using ${PSP_CMAKE_MODULE_PATH}")
 endif()
 
+set(protobuf_BUILD_TESTS OFF)
+set(protobuf_BUILD_SHARED_LIBS OFF)
+set(protobuf_MSVC_STATIC_RUNTIME ON)
+set(ABSL_MSVC_STATIC_RUNTIME ON)
 psp_build_dep("protobuf" "${PSP_CMAKE_MODULE_PATH}/protobuf.txt.in")
 
 set(PROTO_FILES perspective.proto)

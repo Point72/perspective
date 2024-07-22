@@ -17,6 +17,7 @@ ExternalProject_Add(protobuf
   SOURCE_DIR        "${CMAKE_BINARY_DIR}/protobuf-src"
   BINARY_DIR        "${CMAKE_BINARY_DIR}/protobuf-build"
   CONFIGURE_COMMAND ""
+  PATCH_COMMAND     git apply ${PSP_CMAKE_MODULE_PATH}/patches/0001-fix-absl.patch
   BUILD_COMMAND     ""
   INSTALL_COMMAND   ""
   TEST_COMMAND      ""
