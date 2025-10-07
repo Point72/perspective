@@ -20,14 +20,15 @@
         "build": "node ./build.mjs",
         "clean": "node ./clean.mjs",
         "test:jupyter": "__JUPYTERLAB_PORT__=6538 npx playwright test --config ../../tools/perspective-test/playwright.config.ts -- --jupyter",
-        "test:jupyter:build": "node ./build.mjs --test"
+        "test:jupyter:build": "node ./build.mjs --test",
+        "test:jupyter:extension": "jupyter labextension build test/extension"
     },
     "dependencies": {
+        "@finos/perspective": "workspace:",
+        "@finos/perspective-viewer": "workspace:",
         "@finos/perspective-viewer-d3fc": "workspace:",
         "@finos/perspective-viewer-datagrid": "workspace:",
         "@finos/perspective-viewer-openlayers": "workspace:",
-        "@finos/perspective-viewer": "workspace:",
-        "@finos/perspective": "workspace:",
         "@jupyter-widgets/base": ">2 <5",
         "@jupyterlab/application": ">2 <5",
         "@lumino/application": "<3",
@@ -40,6 +41,7 @@
         "@jupyterlab/builder": "^4",
         "@prospective.co/procss": "^0.1.16",
         "copy-webpack-plugin": "~12",
+        "webpack": "catalog:",
         "zx": "^8.1.8"
     },
     "jupyterlab": {
