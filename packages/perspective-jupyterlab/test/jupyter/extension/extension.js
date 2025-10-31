@@ -10,37 +10,13 @@
 // ┃ of the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). ┃
 // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-const CopyPlugin = require("copy-webpack-plugin");
-const webpack = require("webpack");
-const { ModuleFederationPlugin } = webpack.container;
-const packageData = require("./package.json");
+import { IPerspective } from "@finos/perspective-jupyterlab";
 
-const shared = Object.keys(packageData.jupyterlab.sharedPackages)
-    .filter((pkg) => pkg.startsWith("@finos/perspective"))
-    .reduce((obj, pkg) => {
-        obj[pkg] = {
-            singleton: true,
-            packageName: pkg,
-            requiredVersion: require(`${pkg}/package.json`).version,
-        };
-        return obj;
-    }, {});
-
-module.exports = {
-    experiments: {
-        topLevelAwait: true,
+module.exports = [
+    {
+        id: "@finos/perspective-test-federated",
+        autoStart: true,
+        requires: [IPerspective],
+        activate: () => "hello",
     },
-    plugins: [
-        new CopyPlugin({
-            patterns: [{ from: "./install.json", to: "../install.json" }],
-        }),
-        new ModuleFederationPlugin({
-            library: {
-                type: "var",
-                name: ["PERSPECTIVE"],
-            },
-            name: "PERSPECTIVE",
-            shared,
-        }),
-    ],
-};
+];

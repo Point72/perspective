@@ -12,6 +12,14 @@
 
 import { IJupyterWidgetRegistry } from "@jupyter-widgets/base";
 import { PerspectiveModel } from "./model";
+import {
+    IPerspective,
+    IPerspectiveJupyterlab,
+    IPerspectiveViewer,
+    IPerspectiveViewerD3fc,
+    IPerspectiveViewerDatagrid,
+    IPerspectiveViewerOpenlayers,
+} from "./tokens";
 import { PerspectiveView } from "./view";
 import { PERSPECTIVE_VERSION } from "./version";
 const EXTENSION_ID = "@finos/perspective-jupyterlab";
@@ -24,6 +32,14 @@ export const PerspectiveJupyterPlugin = {
     id: EXTENSION_ID,
     // @ts-ignore
     requires: [IJupyterWidgetRegistry],
+    provides: [
+        IPerspective,
+        IPerspectiveJupyterlab,
+        IPerspectiveViewer,
+        IPerspectiveViewerD3fc,
+        IPerspectiveViewerDatagrid,
+        IPerspectiveViewerOpenlayers,
+    ],
     activate: (app, registry) => {
         registry.registerWidget({
             name: EXTENSION_ID,

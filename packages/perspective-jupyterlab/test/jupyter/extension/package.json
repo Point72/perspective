@@ -1,0 +1,41 @@
+{
+    "name": "@finos/perspective-test-federated",
+    "version": "0.0.0",
+    "private": true,
+    "scripts": {},
+    "dependencies": {
+        "@finos/perspective-jupyterlab": "file:../../.."
+    },
+    "devDependencies": {
+        "@jupyterlab/builder": "^4"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "jupyterlab": {
+        "extension": true,
+        "outputDir": "./dist",
+        "sharedPackages": {
+            "@finos/perspective": {
+                "bundled": false,
+                "singleton": true
+            },
+            "@finos/perspective-viewer": {
+                "bundled": false,
+                "singleton": true
+            },
+            "@finos/perspective-viewer-d3fc": {
+                "bundled": false,
+                "singleton": true
+            },
+            "@finos/perspective-viewer-datagrid": {
+                "bundled": false,
+                "singleton": true
+            },
+            "@finos/perspective-viewer-openlayers": {
+                "bundled": false,
+                "singleton": true
+            }
+        }
+    }
+}

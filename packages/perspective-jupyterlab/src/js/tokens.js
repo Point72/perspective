@@ -10,37 +10,19 @@
 // ┃ of the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). ┃
 // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-const CopyPlugin = require("copy-webpack-plugin");
-const webpack = require("webpack");
-const { ModuleFederationPlugin } = webpack.container;
-const packageData = require("./package.json");
+import { Token } from "@lumino/coreutils";
 
-const shared = Object.keys(packageData.jupyterlab.sharedPackages)
-    .filter((pkg) => pkg.startsWith("@finos/perspective"))
-    .reduce((obj, pkg) => {
-        obj[pkg] = {
-            singleton: true,
-            packageName: pkg,
-            requiredVersion: require(`${pkg}/package.json`).version,
-        };
-        return obj;
-    }, {});
-
-module.exports = {
-    experiments: {
-        topLevelAwait: true,
-    },
-    plugins: [
-        new CopyPlugin({
-            patterns: [{ from: "./install.json", to: "../install.json" }],
-        }),
-        new ModuleFederationPlugin({
-            library: {
-                type: "var",
-                name: ["PERSPECTIVE"],
-            },
-            name: "PERSPECTIVE",
-            shared,
-        }),
-    ],
-};
+export const IPerspective = new Token("@finos/perspective");
+export const IPerspectiveJupyterlab = new Token(
+    "@finos/perspective-jupyterlab",
+);
+export const IPerspectiveViewer = new Token("@finos/perspective-viewer");
+export const IPerspectiveViewerD3fc = new Token(
+    "@finos/perspective-viewer-d3fc",
+);
+export const IPerspectiveViewerDatagrid = new Token(
+    "@finos/perspective-viewer-datagrid",
+);
+export const IPerspectiveViewerOpenlayers = new Token(
+    "@finos/perspective-viewer-openlayers",
+);
