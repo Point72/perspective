@@ -1169,12 +1169,94 @@ fn postgres_args() -> GenericSQLVirtualServerModelArgs {
     GenericSQLVirtualServerModelArgs {
         create_entity: Some("TEMPORARY VIEW".to_string()),
         drop_entity: Some("VIEW".to_string()),
+        table_create_entity: Some("TEMPORARY TABLE".to_string()),
+        table_drop_entity: Some("TABLE".to_string()),
         grouping_fn: Some("GROUPING".to_string()),
         row_id_expr: Some("ctid".to_string()),
         like_escape_clause: Some("\\".to_string()),
         regex_fn: Some("regexp_like".to_string()),
+        describe_template: Some("SELECT * FROM ({}) AS __psp_describe__ LIMIT 0".to_string()),
+        folds_unquoted_to_lower: Some(true),
         ..Default::default()
     }
+}
+
+#[test]
+fn test_table_describe_emits_no_default_order() {
+    let builder = GenericSQLVirtualServerModel::new(postgres_args());
+    let mut config = ViewConfig::default();
+    config.columns = vec![Some("a".to_string())];
+    config.sort = vec![Sort("a".to_string(), SortDir::Desc)];
+    let sql = builder
+        .table_describe("derived", &config, &IndexMap::new())
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        sql,
+        "SELECT * FROM (SELECT \"a\" as \"a\" FROM derived) AS __psp_describe__ LIMIT 0"
+    );
+
+    let sql = builder
+        .table_make_view("derived", "v", &config_without_sort(&config), &IndexMap::new())
+        .unwrap();
+    assert!(sql.ends_with("ORDER BY ctid)"), "{sql}");
+}
+
+#[test]
+fn test_table_describe_flat_group_by_emits_no_default_order() {
+    let builder = GenericSQLVirtualServerModel::new(postgres_args());
+    let mut config = ViewConfig::default();
+    config.columns = vec![Some("a".to_string())];
+    config.group_by = vec!["g".to_string()];
+    config.group_rollup_mode = GroupRollupMode::Flat;
+    let sql = builder
+        .table_describe("derived", &config, &IndexMap::new())
+        .unwrap()
+        .unwrap();
+
+    assert!(!sql.contains("ORDER BY"), "{sql}");
+}
+
+fn config_without_sort(config: &ViewConfig) -> ViewConfig {
+    ViewConfig {
+        sort: vec![],
+        ..config.clone()
+    }
+}
+
+#[test]
+fn test_view_make_table_custom_table_create_entity() {
+    let builder = GenericSQLVirtualServerModel::new(postgres_args());
+    let schema = IndexMap::from([("a".to_string(), ColumnType::Integer)]);
+    assert_eq!(
+        builder
+            .view_make_table("v", "t", &ViewConfig::default(), &schema, None)
+            .unwrap(),
+        "CREATE TEMPORARY TABLE t AS (SELECT \"a\" FROM v)"
+    );
+
+    assert_eq!(builder.table_delete("t").unwrap(), "DROP TABLE IF EXISTS t");
+    assert_eq!(builder.view_delete("v").unwrap(), "DROP VIEW IF EXISTS v");
+}
+
+#[test]
+fn test_view_make_table_entity_defaults() {
+    let builder = GenericSQLVirtualServerModel::new(GenericSQLVirtualServerModelArgs {
+        create_entity: Some("VIEW".to_string()),
+        drop_entity: Some("VIEW".to_string()),
+        ..Default::default()
+    });
+
+    let schema = IndexMap::from([("a".to_string(), ColumnType::Integer)]);
+    assert_eq!(
+        builder
+            .view_make_table("v", "t", &ViewConfig::default(), &schema, None)
+            .unwrap(),
+        "CREATE VIEW t AS (SELECT \"a\" FROM v)"
+    );
+
+    assert_eq!(builder.table_delete("t").unwrap(), "DROP VIEW IF EXISTS t");
 }
 
 #[test]
@@ -1695,4 +1777,168 @@ fn test_view_make_table_explicit_schema_addresses_qualified_aggregate() {
             .view_make_table("v", "t", &config, &view_schema, Some(&mismatched))
             .is_err()
     );
+}
+
+#[test]
+fn test_table_path_bare_parts_are_unquoted() {
+    let builder = GenericSQLVirtualServerModel::new(GenericSQLVirtualServerModelArgs::default());
+    assert_eq!(
+        builder.table_path(&["memory", "main", "trades"]).unwrap(),
+        "memory.main.trades"
+    );
+    assert_eq!(builder.table_path(&["trades"]).unwrap(), "trades");
+}
+
+#[test]
+fn test_table_path_quotes_each_unsafe_part() {
+    let builder = GenericSQLVirtualServerModel::new(GenericSQLVirtualServerModelArgs::default());
+    assert_eq!(
+        builder.table_path(&["memory", "my schema", "MyT"]).unwrap(),
+        "memory.\"my schema\".MyT"
+    );
+    assert_eq!(
+        builder.table_path(&["a.b", "say \"hi\""]).unwrap(),
+        "\"a.b\".\"say \"\"hi\"\"\""
+    );
+    assert!(builder.table_path(&[]).is_err());
+    assert!(builder.table_path(&["a", ""]).is_err());
+}
+
+#[test]
+fn test_table_path_round_trips_through_queries() {
+    let builder = GenericSQLVirtualServerModel::new(GenericSQLVirtualServerModelArgs::default());
+    let path = builder
+        .table_path(&["memory", "my schema", "a.b \"c\""])
+        .unwrap();
+
+    assert_eq!(
+        builder.table_size(&path).unwrap(),
+        "SELECT COUNT(*) FROM memory.\"my schema\".\"a.b \"\"c\"\"\""
+    );
+}
+
+#[test]
+fn test_derived_table_names_are_quoted_whole() {
+    let builder = GenericSQLVirtualServerModel::new(GenericSQLVirtualServerModelArgs::default());
+    assert_eq!(
+        builder.table_size("public.trades GROUP BY sector").unwrap(),
+        "SELECT COUNT(*) FROM \"public.trades GROUP BY sector\""
+    );
+
+    assert_eq!(
+        builder.table_size("a.\"b").unwrap(),
+        "SELECT COUNT(*) FROM \"a.\"\"b\""
+    );
+    assert_eq!(
+        builder.table_size("\"a\"x").unwrap(),
+        "SELECT COUNT(*) FROM \"\"\"a\"\"x\""
+    );
+}
+
+#[test]
+fn test_table_path_quotes_upper_case_when_dialect_folds() {
+    let builder = GenericSQLVirtualServerModel::new(postgres_args());
+    assert_eq!(
+        builder.table_path(&["public", "MyTable"]).unwrap(),
+        "public.\"MyTable\""
+    );
+    assert_eq!(
+        builder.table_path(&["public", "trades"]).unwrap(),
+        "public.trades"
+    );
+}
+
+fn clickhouse_view_args() -> GenericSQLVirtualServerModelArgs {
+    GenericSQLVirtualServerModelArgs {
+        create_entity: Some("VIEW".to_string()),
+        grouping_fn: Some("GROUPING".to_string()),
+        unordered: Some(true),
+        ..clickhouse_args()
+    }
+}
+
+#[test]
+fn test_unordered_flat_view_has_no_default_order() {
+    let builder = GenericSQLVirtualServerModel::new(clickhouse_view_args());
+    let mut config = ViewConfig::default();
+    config.columns = vec![Some("a".to_string()), Some("b".to_string())];
+    let sql = builder
+        .table_make_view("default.t", "v", &config, &IndexMap::new())
+        .unwrap();
+
+    assert_eq!(
+        sql,
+        "CREATE VIEW v AS (SELECT \"a\" as \"a\", \"b\" as \"b\" FROM default.t)"
+    );
+}
+
+#[test]
+fn test_unordered_flat_view_keeps_explicit_sort() {
+    let builder = GenericSQLVirtualServerModel::new(clickhouse_view_args());
+    let mut config = ViewConfig::default();
+    config.columns = vec![Some("a".to_string())];
+    config.sort = vec![Sort("a".to_string(), SortDir::Desc)];
+    let sql = builder
+        .table_make_view("default.t", "v", &config, &IndexMap::new())
+        .unwrap();
+
+    assert!(sql.ends_with("ORDER BY \"a\" DESC)"), "{sql}");
+    assert!(!sql.contains("rowid"), "{sql}");
+}
+
+#[test]
+fn test_unordered_split_only_view_numbers_rows_without_rowid() {
+    let builder = GenericSQLVirtualServerModel::new(clickhouse_view_args());
+    let mut config = ViewConfig::default();
+    config.columns = vec![Some("a".to_string())];
+    config.split_by = vec!["s".to_string()];
+    let sql = builder
+        .table_make_view("default.t", "v", &config, &IndexMap::new())
+        .unwrap();
+
+    assert!(
+        sql.contains("ROW_NUMBER() OVER () as \"__ROW_NUM__\""),
+        "{sql}"
+    );
+    assert!(!sql.contains("rowid"), "{sql}");
+}
+
+#[test]
+fn test_unordered_grouped_and_total_views_unchanged() {
+    let ordered = GenericSQLVirtualServerModel::new(GenericSQLVirtualServerModelArgs {
+        unordered: None,
+        ..clickhouse_view_args()
+    });
+
+    let unordered = GenericSQLVirtualServerModel::new(clickhouse_view_args());
+    let mut grouped = ViewConfig::default();
+    grouped.columns = vec![Some("a".to_string())];
+    grouped.group_by = vec!["g".to_string()];
+    let mut total = grouped.clone();
+    total.group_rollup_mode = GroupRollupMode::Total;
+    for config in [grouped, total] {
+        let make = |b: &GenericSQLVirtualServerModel| {
+            b.table_make_view("default.t", "v", &config, &IndexMap::new())
+                .unwrap()
+        };
+
+        assert_eq!(make(&unordered), make(&ordered));
+        assert!(!make(&unordered).contains("rowid"));
+    }
+}
+
+#[test]
+fn test_unordered_window_view_has_no_rowid() {
+    let builder = GenericSQLVirtualServerModel::new(clickhouse_view_args());
+    let mut config = ViewConfig::default();
+    config.columns = vec![Some("t".to_string()), Some("cumsum".to_string())];
+    let (name, spec) = window_spec("cumsum", "sum", Some(WindowFrame::Cumulative));
+    config.windows = Windows(HashMap::from([(name, spec)]));
+    let sql = builder
+        .table_make_view("default.t", "v", &config, &IndexMap::new())
+        .unwrap();
+
+    assert!(!sql.contains("rowid"), "{sql}");
+    assert!(!sql.contains("__PSP_ROWID__"), "{sql}");
+    assert!(sql.contains("ORDER BY \"t\" ASC NULLS FIRST"), "{sql}");
 }

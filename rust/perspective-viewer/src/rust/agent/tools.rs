@@ -697,6 +697,7 @@ fn control_schema_entries(spec: &ControlSpec) -> Vec<(String, Value)> {
             key,
             variants,
             default,
+            ..
         } => vec![(
             key.clone(),
             json!({
@@ -705,7 +706,7 @@ fn control_schema_entries(spec: &ControlSpec) -> Vec<(String, Value)> {
                 "default": default
             }),
         )],
-        ControlSpec::Bool { key, default } => vec![(
+        ControlSpec::Bool { key, default, .. } => vec![(
             key.clone(),
             json!({ "type": "boolean", "default": default }),
         )],

@@ -121,6 +121,7 @@ export const TOOLTIP_FIELDS: readonly PluginConfigField[] = [
 // might appear. `auto_alt_y_axis` + `series_zoom_mode` are Series-only.
 const SERIES_FIELDS: readonly PluginConfigField[] = [
     "auto_alt_y_axis",
+    "group_by_series",
     "facet_mode",
     "series_zoom_mode",
     "include_zero",

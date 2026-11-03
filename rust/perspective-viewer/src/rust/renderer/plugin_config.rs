@@ -168,14 +168,22 @@ pub fn validate_plugin_config(
         OptionalUpdate::SetDefault => Ok(ValidatedPluginConfig::Clear),
         OptionalUpdate::Missing => Ok(ValidatedPluginConfig::Missing),
         OptionalUpdate::Update(mut map) => {
+            let mut remove = match schema_of(current)? {
+                Some(before) => reset_sibling_keys(&before, current, &map, map.keys()),
+                None => vec![],
+            };
+
             let mut merged = current.clone();
+            for key in &remove {
+                merged.remove(key);
+            }
+
             for (k, v) in &map {
                 merged.insert(k.clone(), v.clone());
             }
 
             let schema = schema_of(&merged)?;
             let mut active = None;
-            let mut remove = vec![];
             if let Some(s) = &schema {
                 let keys = s.active_keys();
                 map.retain(|k, _| keys.contains(k));
@@ -1071,7 +1079,8 @@ impl Renderer {
             return false;
         };
 
-        let mut next = self.committed_plugin_config();
+        let current = self.committed_plugin_config();
+        let mut next = current.clone();
         for k in &update.keys {
             match update.value.get(k) {
                 Some(v) => {
@@ -1081,6 +1090,17 @@ impl Renderer {
                     next.remove(k);
                 },
             }
+        }
+
+        let reset = self
+            .query_plugin_config_schema(view_config, Some(&current))
+            .map(|before| {
+                reset_sibling_keys(&before, &current, &update.value, update.keys.iter())
+            })
+            .unwrap_or_default();
+
+        for key in &reset {
+            next.remove(key);
         }
 
         let schema = self
@@ -1108,6 +1128,10 @@ impl Renderer {
                 }
             }
 
+            for key in &reset {
+                changed |= bucket.plugin.remove(key).is_some();
+            }
+
             if let Some(schema) = &schema {
                 let active = schema.active_keys();
                 let before = bucket.plugin.len();
@@ -1118,6 +1142,35 @@ impl Renderer {
             changed
         })
     }
+}
+
+fn reset_sibling_keys<'a>(
+    before: &ColumnConfigSchema,
+    current: &ConfigMap,
+    update: &ConfigMap,
+    updated: impl Iterator<Item = &'a String>,
+) -> Vec<String> {
+    let mut out = vec![];
+    for key in updated {
+        let siblings = before.reset_siblings_of(key);
+        if siblings.is_empty() {
+            continue;
+        }
+
+        let default = before.default_value_of(key);
+        let effective = |map: &ConfigMap| map.get(key).cloned().or_else(|| default.clone());
+        if effective(current) == effective(update) {
+            continue;
+        }
+
+        for sibling in siblings {
+            if sibling != key && !update.contains_key(sibling) && !out.contains(sibling) {
+                out.push(sibling.clone());
+            }
+        }
+    }
+
+    out
 }
 
 /// A schema with default overrides applied, and the override-only value of

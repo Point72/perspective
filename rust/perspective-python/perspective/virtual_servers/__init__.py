@@ -121,6 +121,15 @@ class VirtualServerHandler:
 
         pass
 
+    def table_delete(self, table_name):
+        """
+        Delete a table made by `view_make_table`. Optional - when absent,
+        `view_delete` is called instead, which suits handlers that create
+        both as the same kind of entity.
+        """
+
+        self.view_delete(table_name)
+
     def view_get_min_max(self, view_name, column_name, config):
         """
         [OPTIONAL] Get the min and max values of a column in a view.

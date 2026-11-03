@@ -82,6 +82,10 @@ pub enum ControlSpec {
         key: String,
         variants: Vec<EnumVariant>,
         default: String,
+
+        /// See [`ControlSpec::reset_siblings`].
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        reset_siblings: Vec<String>,
     },
 
     /// A CSS `font-family` picked from the generic keywords plus the families
@@ -118,10 +122,18 @@ pub enum ControlSpec {
     Bool {
         key: String,
         default: bool,
+
+        /// See [`ControlSpec::reset_siblings`].
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        reset_siblings: Vec<String>,
     },
     Number {
         key: String,
         default: f64,
+
+        /// See [`ControlSpec::reset_siblings`].
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        reset_siblings: Vec<String>,
 
         /// If `true`, always serialize this values even if it is the default.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -437,6 +449,33 @@ impl ColumnConfigSchema {
         self
     }
 
+    /// The keys to reset when the value of the control owning `key` changes.
+    /// See [`ControlSpec::reset_siblings`].
+    pub fn reset_siblings_of(&self, key: &str) -> &[String] {
+        self.leaf_fields()
+            .into_iter()
+            .find(|spec| spec.serialized_keys().contains(&key))
+            .map(ControlSpec::reset_siblings)
+            .unwrap_or_default()
+    }
+
+    /// The declared default of the [`ControlSpec::Enum`], [`ControlSpec::Bool`]
+    /// or [`ControlSpec::Number`] owning `key`, as its config value.
+    pub fn default_value_of(&self, key: &str) -> Option<Value> {
+        self.leaf_fields().into_iter().find_map(|spec| match spec {
+            ControlSpec::Enum {
+                key: k, default, ..
+            } if k == key => Some(Value::String(default.clone())),
+            ControlSpec::Bool {
+                key: k, default, ..
+            } if k == key => Some(Value::Bool(*default)),
+            ControlSpec::Number {
+                key: k, default, ..
+            } if k == key => serde_json::Number::from_f64(*default).map(Value::Number),
+            _ => None,
+        })
+    }
+
     /// The variants of the [`ControlSpec::Enum`] owning `key`, if any.
     pub fn enum_variants_of(&self, key: &str) -> Option<&[EnumVariant]> {
         self.leaf_fields().into_iter().find_map(|spec| match spec {
@@ -459,6 +498,22 @@ impl ColumnConfigSchema {
 }
 
 impl ControlSpec {
+    /// Sibling keys, in the same config map, whose stored values are removed
+    /// when this control's value changes, so they fall back to their
+    /// (possibly value-dependent) defaults. Lets a plugin whose schema
+    /// narrows one field on another's value - e.g. offering only one
+    /// `facet_mode` under some `group_by_series` - discard a stored choice
+    /// the new schema no longer offers. A sibling set in the SAME update is
+    /// kept, and validated against the narrowed schema like any value.
+    pub fn reset_siblings(&self) -> &[String] {
+        match self {
+            ControlSpec::Enum { reset_siblings, .. }
+            | ControlSpec::Bool { reset_siblings, .. }
+            | ControlSpec::Number { reset_siblings, .. } => reset_siblings,
+            _ => &[],
+        }
+    }
+
     /// Top-level JSON keys this control owns when its value is serialized
     /// into a column's config map. For primitives this is just `[key]`;
     /// for composites it's the set of fields the wrapped sub-struct
@@ -653,6 +708,7 @@ impl ControlSpec {
                 key: k,
                 variants,
                 default,
+                ..
             } if k == key => {
                 let value = expect_str(value)?;
                 if !variants.iter().any(|v| v.value == value) {
@@ -705,7 +761,9 @@ impl ControlSpec {
 
                 *default = Some(alignment);
             },
-            ControlSpec::Bool { key: k, default } if k == key => {
+            ControlSpec::Bool {
+                key: k, default, ..
+            } if k == key => {
                 *default = expect_bool(value)?;
             },
             ControlSpec::Number {

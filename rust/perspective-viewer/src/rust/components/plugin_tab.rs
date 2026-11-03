@@ -176,6 +176,7 @@ fn render_leaf(
             key,
             variants,
             default,
+            ..
         } => {
             let current = raw_config
                 .get(&key)
@@ -242,7 +243,7 @@ fn render_leaf(
                 />
             })
         },
-        ControlSpec::Bool { key, default } => {
+        ControlSpec::Bool { key, default, .. } => {
             let current = raw_config.get(&key).and_then(|v| v.as_bool());
             Some(html! {
                 <BoolField field_key={key} {default} {current} on_change={on_change.clone()} />

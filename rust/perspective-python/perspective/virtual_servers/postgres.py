@@ -178,6 +178,11 @@ class PostgresVirtualServerHandler(VirtualServerHandler):
     viewport read re-plans the view's inner `ORDER BY` (a materialized
     `CREATE TABLE AS` would depend on seq-scan order, which Postgres does not
     guarantee), and all views drop automatically on disconnect.
+
+    Tables derived from views are `TEMPORARY TABLE`s instead, as they are
+    sources for further views: an unsorted view orders by the `ctid` system
+    column, which only a base table carries. `ctid` is never selected by
+    `*`, so it does not appear among a derived table's columns.
     """
 
     def __init__(self, conninfo):
@@ -186,11 +191,14 @@ class PostgresVirtualServerHandler(VirtualServerHandler):
             {
                 "create_entity": "TEMPORARY VIEW",
                 "drop_entity": "VIEW",
+                "table_create_entity": "TEMPORARY TABLE",
+                "table_drop_entity": "TABLE",
                 "grouping_fn": "GROUPING",
                 "row_id_expr": "ctid",
                 "like_escape_clause": "\\",
                 "regex_fn": "regexp_like",
                 "describe_template": "SELECT * FROM ({}) AS __psp_describe__ LIMIT 0",
+                "folds_unquoted_to_lower": True,
             }
         )
 
@@ -250,7 +258,9 @@ class PostgresVirtualServerHandler(VirtualServerHandler):
             ORDER BY 1, 2
         """
         results = run_query(self.db, query)
-        return [f"{result[0]}.{result[1]}" for result in results]
+        return [
+            self.sql_builder.table_path([schema, name]) for schema, name in results
+        ]
 
     def _describe(self, entity_id):
         """The column name/OID pairs of any relation or query result.
@@ -317,6 +327,10 @@ class PostgresVirtualServerHandler(VirtualServerHandler):
 
     def view_delete(self, view_name):
         query = self.sql_builder.view_delete(view_name)
+        run_query(self.db, query, execute=True)
+
+    def table_delete(self, table_name):
+        query = self.sql_builder.table_delete(table_name)
         run_query(self.db, query, execute=True)
 
     def view_get_min_max(self, view_name, column_name, config):
@@ -446,7 +460,7 @@ def pg_to_py(value):
 
 def run_query(db, query, execute=False, cursor=False):
     query = " ".join(query.split())
-    start = datetime.now(datetime.UTC)
+    start = datetime.now(timezone.utc)
     try:
         cur = db.execute(query)
     except psycopg.Error as e:
@@ -454,7 +468,7 @@ def run_query(db, query, execute=False, cursor=False):
         logger.error(f"{query}")
         raise
     else:
-        logger.debug(f"{datetime.now(datetime.UTC) - start} {query}")
+        logger.debug(f"{datetime.now(timezone.utc) - start} {query}")
         if cursor:
             return cur
         elif not execute:

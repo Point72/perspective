@@ -219,7 +219,7 @@ export class AreaGlyph {
 
             if (
                 splitFilter !== undefined &&
-                chart._series[s.seriesId].splitIdx !== splitFilter
+                chart._series[s.seriesId].facetIdx !== splitFilter
             ) {
                 continue;
             }

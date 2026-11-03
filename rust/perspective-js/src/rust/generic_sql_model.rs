@@ -51,6 +51,24 @@ impl GenericSQLVirtualServerModel {
         })
     }
 
+    /// Returns the entity id of the hosted table at relation path `parts`,
+    /// each part quoted only when it is not a bare identifier.
+    #[wasm_bindgen(js_name = "tablePath")]
+    pub fn table_path(&self, parts: Vec<String>) -> Result<String, JsValue> {
+        let parts = parts.iter().map(String::as_str).collect::<Vec<_>>();
+        self.inner
+            .table_path(&parts)
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Returns the SQL relation reference for an entity id.
+    #[wasm_bindgen(js_name = "quoteEntity")]
+    pub fn quote_entity(&self, entity_id: &str) -> Result<String, JsValue> {
+        self.inner
+            .quote_entity(entity_id)
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
     /// Returns the SQL query to list all hosted tables.
     #[wasm_bindgen(js_name = "getHostedTables")]
     pub fn get_hosted_tables(&self) -> Result<String, JsValue> {
@@ -139,6 +157,14 @@ impl GenericSQLVirtualServerModel {
     pub fn view_delete(&self, view_id: &str) -> Result<String, JsValue> {
         self.inner
             .view_delete(view_id)
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Returns the SQL query to delete a table made from a view.
+    #[wasm_bindgen(js_name = "tableDelete")]
+    pub fn table_delete(&self, table_id: &str) -> Result<String, JsValue> {
+        self.inner
+            .table_delete(table_id)
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 

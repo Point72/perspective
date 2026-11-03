@@ -44,6 +44,8 @@ export interface SeriesInfo {
     seriesId: number;
     aggIdx: number;
     splitIdx: number;
+
+    facetIdx: number;
     aggName: string;
     splitKey: string;
     label: string;
@@ -305,6 +307,8 @@ export interface SeriesPipelineInput {
      */
     facetSplits?: boolean;
 
+    facetKeyOf?: (splitPrefix: string) => string;
+
     /**
      * Reusable scratch — pipeline writes records into these in place
      * and zero-fills the stack ladder. Pass the previous build's
@@ -320,6 +324,8 @@ export type { NumericCategoryDomain };
 export interface SeriesPipelineResult {
     aggregates: string[];
     splitPrefixes: string[];
+
+    facetPrefixes: string[];
     rowPaths: CategoricalLevel[];
     numCategories: number;
     rowOffset: number;
@@ -436,6 +442,7 @@ export function buildSeriesPipeline(
         groupPad,
         includeZero,
         facetSplits,
+        facetKeyOf,
         scratchBars,
         scratchPosStack,
         scratchNegStack,
@@ -445,6 +452,7 @@ export function buildSeriesPipeline(
     const empty: SeriesPipelineResult = {
         aggregates: [],
         splitPrefixes: [],
+        facetPrefixes: [],
         rowPaths: [],
         numCategories: 0,
         rowOffset: 0,
@@ -510,6 +518,21 @@ export function buildSeriesPipeline(
         };
     }
 
+    const facetPrefixes: string[] = [];
+    const facetOfSplit = new Int32Array(splitPrefixes.length);
+    for (let p = 0; p < splitPrefixes.length; p++) {
+        const key = facetKeyOf
+            ? facetKeyOf(splitPrefixes[p])
+            : splitPrefixes[p];
+        let f = facetPrefixes.indexOf(key);
+        if (f === -1) {
+            f = facetPrefixes.length;
+            facetPrefixes.push(key);
+        }
+
+        facetOfSplit[p] = f;
+    }
+
     const series: SeriesInfo[] = [];
     const M = aggregates.length;
     const P = splitPrefixes.length;
@@ -536,6 +559,7 @@ export function buildSeriesPipeline(
                 seriesId: k * P + p,
                 aggIdx: k,
                 splitIdx: p,
+                facetIdx: facetOfSplit[p],
                 aggName,
                 splitKey,
                 label,
@@ -572,7 +596,8 @@ export function buildSeriesPipeline(
     // renders in its own facet and cross-split stacking would lift
     // every facet after the first off its baseline. Reuse chart-owned
     // scratch when sized; else allocate. Active prefix is zero-filled.
-    const stackLen = facetSplits ? N * M * P : N * M;
+    const F = facetPrefixes.length;
+    const stackLen = facetSplits ? N * M * F : N * M;
     const posStack = ensureFloat64Scratch(scratchPosStack ?? null, stackLen);
     const negStack = ensureFloat64Scratch(scratchNegStack ?? null, stackLen);
     posStack.fill(0, 0, stackLen);
@@ -973,7 +998,7 @@ export function buildSeriesPipeline(
                     }
 
                     const stackIdx = facetSplits
-                        ? (catI * M + k) * P + p
+                        ? (catI * M + k) * F + facetOfSplit[p]
                         : catI * M + k;
                     let y0: number;
                     let y1: number;
@@ -1250,6 +1275,7 @@ export function buildSeriesPipeline(
     return {
         aggregates,
         splitPrefixes,
+        facetPrefixes,
         rowPaths,
         numCategories,
         rowOffset,

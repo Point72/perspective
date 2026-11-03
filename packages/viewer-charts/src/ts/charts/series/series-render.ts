@@ -132,7 +132,7 @@ export function uploadBarInstances(
 ): void {
     const bars = chart._bars;
     const total = bars.count;
-    const P = chart._splitPrefixes.length;
+    const P = chart._facetPrefixes.length;
     const faceted = chart._facetActive && P > 0;
     let n = 0;
 
@@ -174,9 +174,8 @@ export function uploadBarInstances(
         const M = Math.max(1, chart._aggregates.length);
         const bucketOf = faceted
             ? (seriesId: number) =>
-                  (seriesId % P) * M + Math.floor(seriesId / P)
-            : (seriesId: number) =>
-                  P > 0 ? Math.floor(seriesId / P) : seriesId;
+                  series[seriesId].facetIdx * M + series[seriesId].aggIdx
+            : (seriesId: number) => series[seriesId].aggIdx;
         const numBuckets = faceted ? P * M : M;
         const counts = new Array<number>(numBuckets).fill(0);
         for (let i = 0; i < total; i++) {
@@ -511,7 +510,7 @@ export function renderBarFrame(
     // build-time `_facetActive` stamp (NOT the live `_facetConfig`) so
     // this frame's render mode always matches the stack geometry the
     // current `_bars` were built with.
-    if (chart._facetActive && chart._splitPrefixes.length > 1) {
+    if (chart._facetActive && chart._facetPrefixes.length > 1) {
         renderFacetedBarFrame(chart, glManager, {
             horizontal,
             numericCat,
@@ -530,12 +529,12 @@ export function renderBarFrame(
     chart._facetGrid = null;
 
     const hasLegend = chart._series.length > 1;
-    const hasCatLabel = chart._groupBy.length > 0;
+    const hasCatLabel = chart._effectiveGroupBy.length > 0;
 
     const provisionalDomain: CategoricalDomain = {
         levels: chart._rowPaths,
         numRows: chart._numCategories,
-        levelLabels: chart._groupBy.slice(),
+        levelLabels: chart._effectiveGroupBy.slice(),
         positions: groupedCategoryPositions(chart),
     };
 
@@ -924,7 +923,7 @@ function renderFacetedBarFrame(
         visRightMax,
     } = ctx;
 
-    const hasCatLabel = chart._groupBy.length > 0;
+    const hasCatLabel = chart._effectiveGroupBy.length > 0;
     const valueCatDomain = chart._leftValueCategoryDomain;
     const valueCatActive =
         chart._leftValueAxisMode === "category" &&
@@ -933,7 +932,10 @@ function renderFacetedBarFrame(
 
     // Facets absorb the split dimension and color follows the
     // aggregate, so only multiple aggregates warrant a legend.
-    const hasLegend = chart._aggregates.length > 1;
+    const legendRows =
+        chart._aggregates.length *
+        Math.max(1, chart._lastGroupBySplit?.values.length ?? 1);
+    const hasLegend = legendRows > 1;
 
     // `buildFacetGrid` axis modes are named in CANVAS orientation
     // (x = bottom band, y = left band); map the logical category /
@@ -941,15 +943,14 @@ function renderFacetedBarFrame(
     const catAxisMode = numericCat ? ("outer" as const) : ("cell" as const);
     const valAxisMode = valueCatActive ? ("cell" as const) : ("outer" as const);
 
-    const grid: FacetGrid = buildFacetGrid(chart._splitPrefixes, {
+    const grid: FacetGrid = buildFacetGrid(chart._facetPrefixes, {
         cssWidth,
         cssHeight,
         xAxis: horizontal ? valAxisMode : catAxisMode,
         yAxis: horizontal ? catAxisMode : valAxisMode,
         hasLegend:
             hasLegend &&
-            resolveLegendMode(chart._pluginConfig, chart._aggregates.length) ===
-                "sidebar",
+            resolveLegendMode(chart._pluginConfig, legendRows) === "sidebar",
         legendWidth: legendSidebarWidth(chart._pluginConfig, 96),
         hasXLabel: horizontal ? true : hasCatLabel,
         hasYLabel: horizontal ? hasCatLabel : true,
@@ -1058,7 +1059,9 @@ function renderFacetedBarFrame(
                 projRight,
                 theme.areaOpacity,
                 horizontal,
-                hovered && hovered.splitIdx === p ? hovered.seriesId : -1,
+                hovered && chart._series[hovered.seriesId]?.facetIdx === p
+                    ? hovered.seriesId
+                    : -1,
                 p,
             );
         });
@@ -1067,7 +1070,7 @@ function renderFacetedBarFrame(
     chart._lastXDomain = {
         levels: chart._rowPaths,
         numRows: chart._numCategories,
-        levelLabels: chart._groupBy.slice(),
+        levelLabels: chart._effectiveGroupBy.slice(),
         positions: groupedCategoryPositions(chart),
     };
     chart._lastYDomain = {
@@ -1128,10 +1131,11 @@ function renderBarGridlinesCell(
  */
 export function layoutForRecord(
     chart: SeriesChart,
-    b: { splitIdx: number },
+    b: { seriesId: number },
 ): PlotLayout | null {
     if (chart._facetGrid) {
-        return chart._facetGrid.cells[b.splitIdx]?.layout ?? null;
+        const facetIdx = chart._series[b.seriesId]?.facetIdx ?? 0;
+        return chart._facetGrid.cells[facetIdx]?.layout ?? null;
     }
 
     return chart._lastLayout;
@@ -1262,7 +1266,7 @@ function renderFacetedBarChromeOverlay(chart: SeriesChart): void {
     const theme = chart._resolveTheme();
     const dpr = chart._glManager?.dpr ?? 1;
     const horizontal = chart._isHorizontal;
-    const hasCatLabel = chart._groupBy.length > 0;
+    const hasCatLabel = chart._effectiveGroupBy.length > 0;
     const numericCat =
         chart._categoryAxisMode === "numeric" &&
         chart._numericCategoryDomain !== null &&
@@ -1543,7 +1547,11 @@ function renderFacetedBarLegend(chart: SeriesChart, grid: FacetGrid): void {
     }
 
     const cfg = chart._pluginConfig;
-    const M = chart._aggregates.length;
+
+    const last = chart._lastGroupBySplit;
+    const V = last ? Math.max(1, last.values.length) : 1;
+    const A = chart._aggregates.length;
+    const M = A * V;
     const mode = resolveLegendMode(cfg, M);
     const floating = mode === "floating";
     if (M <= 1 || mode === "none" || (!floating && !grid.legendRect)) {
@@ -1559,10 +1567,21 @@ function renderFacetedBarLegend(chart: SeriesChart, grid: FacetGrid): void {
         { length: M },
         () => [0.5, 0.5, 0.5],
     );
+    const labelByAgg: string[] = Array.from({ length: M }, (_, i) => {
+        const agg = chart._aggregates[Math.floor(i / V)];
+        return last
+            ? A > 1
+                ? `${last.values[i % V]} | ${agg}`
+                : last.values[i % V]
+            : agg;
+    });
+
     for (const s of chart._series) {
-        if (s.aggIdx >= 0 && s.aggIdx < M) {
-            idsByAgg[s.aggIdx].push(s.seriesId);
-            colorByAgg[s.aggIdx] = s.color;
+        const value = last ? (last.prefixes.get(s.splitKey)?.value ?? 0) : 0;
+        const row = s.aggIdx * V + value;
+        if (s.aggIdx >= 0 && s.aggIdx < A) {
+            idsByAgg[row].push(s.seriesId);
+            colorByAgg[row] = s.color;
         }
     }
 
@@ -1576,8 +1595,8 @@ function renderFacetedBarLegend(chart: SeriesChart, grid: FacetGrid): void {
                   chart._chromeCanvas,
                   chart._resolveTheme(),
                   M,
-                  () => chart._aggregates.slice(0, M),
-                  { title: "Legend" },
+                  () => labelByAgg,
+                  { title: last ? seriesLegendTitle(chart) : "Legend" },
               ),
           )
         : {
@@ -1593,13 +1612,13 @@ function renderFacetedBarLegend(chart: SeriesChart, grid: FacetGrid): void {
         {
             mode: floating ? "floating" : "sidebar",
             legend: chart._legend,
-            title: "Legend",
+            title: last ? seriesLegendTitle(chart) : "Legend",
             sidebarGutter: floating ? undefined : grid.legendRect!.width,
             opacity: cfg.legend_opacity,
         },
         M,
         (k) => ({
-            label: chart._aggregates[k],
+            label: labelByAgg[k],
             color: colorByAgg[k],
             seriesIds: idsByAgg[k],
             hidden: idsByAgg[k].every((sid) => chart._hiddenSeries.has(sid)),
@@ -1623,7 +1642,7 @@ function renderBarLegend(chart: SeriesChart): void {
 
     const layout = chart._lastLayout;
     const floating = mode === "floating";
-    const title = chart._splitBy.join(" / ") || "Legend";
+    const title = seriesLegendTitle(chart);
     const box = floating
         ? chart._legend.floatingBox(
               cfg,
@@ -1672,6 +1691,14 @@ function renderBarLegend(chart: SeriesChart): void {
             hidden: chart._hiddenSeries.has(series[i].seriesId),
         }),
     );
+}
+
+function seriesLegendTitle(chart: SeriesChart): string {
+    const dims = chart._lastGroupBySplit
+        ? [...chart._splitBy, chart._groupBy[chart._groupBy.length - 1]]
+        : chart._splitBy;
+
+    return dims.join(" / ") || "Legend";
 }
 
 function renderBarTooltipCanvas(chart: SeriesChart): void {

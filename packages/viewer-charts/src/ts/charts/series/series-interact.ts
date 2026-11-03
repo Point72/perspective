@@ -256,7 +256,10 @@ function hitTestBars(
             continue;
         }
 
-        if (splitFilter !== undefined && sid[i] % P !== splitFilter) {
+        if (
+            splitFilter !== undefined &&
+            chart._series[sid[i]].facetIdx !== splitFilter
+        ) {
             continue;
         }
 
@@ -339,7 +342,7 @@ function hitTestPoints(
             continue;
         }
 
-        if (splitFilter !== undefined && s.splitIdx !== splitFilter) {
+        if (splitFilter !== undefined && s.facetIdx !== splitFilter) {
             continue;
         }
 
@@ -440,7 +443,10 @@ function hitTestAreas(
             continue;
         }
 
-        if (splitFilter !== undefined && sid[i] % P !== splitFilter) {
+        if (
+            splitFilter !== undefined &&
+            chart._series[sid[i]].facetIdx !== splitFilter
+        ) {
             continue;
         }
 
@@ -471,7 +477,7 @@ function hitTestAreas(
             continue;
         }
 
-        if (splitFilter !== undefined && s.splitIdx !== splitFilter) {
+        if (splitFilter !== undefined && s.facetIdx !== splitFilter) {
             continue;
         }
 
@@ -625,7 +631,18 @@ export function buildBarTooltipLines(
 
     const yFmt = chart.getColumnFormatter(s.aggName, "value");
     grid.push([s.aggName, yFmt(b.value)]);
-    if (s.splitKey) {
+    const last = chart._lastGroupBySplit;
+    const entry = last?.prefixes.get(s.splitKey);
+    if (last && entry) {
+        grid.push([
+            chart._groupBy[chart._groupBy.length - 1],
+            last.values[entry.value],
+        ]);
+
+        if (entry.facet !== "") {
+            grid.push(["Split", entry.facet]);
+        }
+    } else if (s.splitKey) {
         grid.push(["Split", s.splitKey]);
     }
 

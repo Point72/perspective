@@ -305,16 +305,64 @@ class DebugDefaultsPlugin extends DebugStyledPlugin {
     }
 }
 
+class DebugSiblingsPlugin extends DebugStyledPlugin {
+    get_static_config() {
+        return {
+            name: "Debug Siblings",
+            select_mode: "toggle",
+            config_column_names: ["Columns"],
+            priority: 0,
+            can_render_column_styles: false,
+        };
+    }
+
+    plugin_config_schema(_view_config, current_value) {
+        const last = current_value?.group_by_series === "last_group_by";
+        return {
+            fields: [
+                {
+                    kind: "Enum",
+                    key: "group_by_series",
+                    default: "split_by",
+                    variants: [
+                        { value: "split_by", label: "Split By" },
+                        { value: "last_group_by", label: "Last Group By" },
+                    ],
+                    reset_siblings: ["facet_mode"],
+                },
+                {
+                    kind: "Enum",
+                    key: "facet_mode",
+                    default: last ? "grid" : "overlay",
+                    variants: last
+                        ? [{ value: "grid", label: "Grid" }]
+                        : [
+                              { value: "grid", label: "Grid" },
+                              { value: "overlay", label: "Overlay" },
+                          ],
+                },
+                { kind: "Bool", key: "legend_on", default: false },
+            ],
+        };
+    }
+
+    column_config_schema() {
+        return { fields: [] };
+    }
+}
+
 customElements.define("perspective-viewer-debug-styled", DebugStyledPlugin);
 customElements.define("perspective-viewer-debug-alt", DebugAltPlugin);
 customElements.define("perspective-viewer-debug-format", DebugFormatPlugin);
 customElements.define("perspective-viewer-debug-defaults", DebugDefaultsPlugin);
+customElements.define("perspective-viewer-debug-siblings", DebugSiblingsPlugin);
 
 const Viewer = customElements.get("perspective-viewer");
 Viewer.registerPlugin("perspective-viewer-debug-styled");
 Viewer.registerPlugin("perspective-viewer-debug-alt");
 Viewer.registerPlugin("perspective-viewer-debug-format");
 Viewer.registerPlugin("perspective-viewer-debug-defaults");
+Viewer.registerPlugin("perspective-viewer-debug-siblings");
 
 async function load() {
     const resp = await fetch(

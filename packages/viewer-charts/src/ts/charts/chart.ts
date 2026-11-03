@@ -288,6 +288,8 @@ export interface PluginConfig {
      */
     facet_mode: "grid" | "overlay";
 
+    group_by_series: "split_by" | "last_group_by";
+
     /**
      * Faceted-cartesian zoom routing. `"shared"` — one viewport across
      * all facets; `"independent"` — wheel/pan routes to the facet under
@@ -543,6 +545,7 @@ export type LegendSizeMode = "auto" | "fixed";
 export const DEFAULT_PLUGIN_CONFIG: PluginConfig = {
     auto_alt_y_axis: false,
     facet_mode: "grid",
+    group_by_series: "split_by",
     facet_zoom_mode: "shared",
     series_zoom_mode: "dynamic",
     include_zero: false,

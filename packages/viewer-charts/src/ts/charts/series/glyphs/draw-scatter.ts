@@ -302,7 +302,7 @@ export class ScatterGlyph {
             for (const r of buf.seriesRanges) {
                 if (
                     splitFilter !== undefined &&
-                    chart._series[r.seriesId].splitIdx !== splitFilter
+                    chart._series[r.seriesId].facetIdx !== splitFilter
                 ) {
                     continue;
                 }

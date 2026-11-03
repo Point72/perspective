@@ -85,6 +85,8 @@ type FieldSpec =
     | {
           kind: "Enum";
           variants: ReadonlyArray<{ value: string; label: string }>;
+
+          reset_siblings?: readonly PluginConfigField[];
       }
     | { kind: "Number"; min: number; max: number; step?: number }
     | { kind: "Alignment"; corners?: boolean };
@@ -113,6 +115,14 @@ const FIELD_SCHEMAS: Record<PluginConfigField, FieldSpec | (() => FieldSpec)> =
                 { value: "grid", label: "Grid" },
                 { value: "overlay", label: "Overlay" },
             ],
+        },
+        group_by_series: {
+            kind: "Enum",
+            variants: [
+                { value: "split_by", label: "Split By" },
+                { value: "last_group_by", label: "Last Group By" },
+            ],
+            reset_siblings: ["facet_mode"],
         },
         facet_zoom_mode: {
             kind: "Enum",
@@ -186,9 +196,24 @@ const FIELD_SCHEMAS: Record<PluginConfigField, FieldSpec | (() => FieldSpec)> =
 function fieldSpec(
     key: PluginConfigField,
     defaults: PluginConfig,
+    current?: Partial<PluginConfig> | null,
 ): Record<string, unknown> & { kind: string } {
     const entry = FIELD_SCHEMAS[key];
     const spec = typeof entry === "function" ? entry() : entry;
+
+    if (
+        key === "facet_mode" &&
+        current?.group_by_series === "last_group_by" &&
+        spec.kind === "Enum"
+    ) {
+        return {
+            ...spec,
+            variants: spec.variants.filter((v) => v.value === "grid"),
+            key,
+            default: "grid",
+        };
+    }
+
     return { ...spec, key, default: defaults[key] };
 }
 
@@ -207,7 +232,12 @@ const PLUGIN_FIELD_GROUPS: ReadonlyArray<{
     },
     {
         key: "facets",
-        fields: ["facet_mode", "facet_zoom_mode", "series_zoom_mode"],
+        fields: [
+            "group_by_series",
+            "facet_mode",
+            "facet_zoom_mode",
+            "series_zoom_mode",
+        ],
     },
     {
         key: "glyph",
@@ -751,10 +781,13 @@ export class HTMLPerspectiveViewerWebGLPluginElement
         return { fields };
     }
 
-    plugin_config_schema(_view_config?: {
-        group_by?: string[];
-        group_rollup_mode?: string;
-    }) {
+    plugin_config_schema(
+        _view_config?: {
+            group_by?: string[];
+            group_rollup_mode?: string;
+        },
+        current_value?: Partial<PluginConfig> | null,
+    ) {
         const defaults = this._effectiveDefaults();
         const applicable = this._chartType.applicable_plugin_fields;
         const present = new Set(applicable);
@@ -771,7 +804,7 @@ export class HTMLPerspectiveViewerWebGLPluginElement
                 groups.push({
                     kind: "Group",
                     key: group.key,
-                    fields: members.map((k) => fieldSpec(k, defaults)),
+                    fields: members.map((k) => fieldSpec(k, defaults, current_value)),
                 });
             }
         }
@@ -779,7 +812,7 @@ export class HTMLPerspectiveViewerWebGLPluginElement
         const fields: Array<Record<string, unknown> & { kind: string }> =
             applicable
                 .filter((k) => !grouped.has(k))
-                .map((k) => fieldSpec(k, defaults));
+                .map((k) => fieldSpec(k, defaults, current_value));
 
         return { fields: [...fields, ...groups] };
     }

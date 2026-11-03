@@ -38,6 +38,22 @@ impl PyGenericSQLVirtualServerModel {
         }
     }
 
+    /// The entity id of the hosted table at relation path `parts`, each
+    /// part quoted only when it is not a bare identifier.
+    pub fn table_path(&self, parts: Vec<String>) -> PyResult<String> {
+        let parts = parts.iter().map(String::as_str).collect::<Vec<_>>();
+        self.inner
+            .table_path(&parts)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// The SQL relation reference for an entity id.
+    pub fn quote_entity(&self, entity_id: &str) -> PyResult<String> {
+        self.inner
+            .quote_entity(entity_id)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
     pub fn get_hosted_tables(&self) -> PyResult<String> {
         self.inner
             .get_hosted_tables()
@@ -120,6 +136,12 @@ impl PyGenericSQLVirtualServerModel {
     pub fn view_delete(&self, view_id: &str) -> PyResult<String> {
         self.inner
             .view_delete(view_id)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    pub fn table_delete(&self, table_id: &str) -> PyResult<String> {
+        self.inner
+            .table_delete(table_id)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 

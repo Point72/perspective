@@ -43,7 +43,7 @@ use crate::config::{
 };
 use crate::proto::{ColumnType, ViewPort};
 use crate::virtual_server::generic_sql_model::table_make_view::{
-    ViewQueryContext, entity_ref, quote_ident,
+    ViewQueryContext, is_bare_ident, entity_ref, quote_ident,
 };
 
 /// Error type for SQL generation operations.
@@ -93,13 +93,34 @@ pub struct GenericSQLVirtualServerModelArgs {
     /// (`"TABLE"`).
     drop_entity: Option<String>,
 
+    /// Entity keyword for `view_make_table`'s `CREATE {table_create_entity}`,
+    /// defaulting to `create_entity`. A derived `Table` is a base for further
+    /// views, whose natural row order reads `row_id_expr` - a pseudo-column
+    /// only base tables carry - so dialects that create views as views
+    /// (Postgres) must create derived `Table`s as tables
+    /// (`"TEMPORARY TABLE"`).
+    table_create_entity: Option<String>,
+
+    /// Entity keyword for `table_delete`'s `DROP {table_drop_entity} IF
+    /// EXISTS`, defaulting to `drop_entity`. Must agree with
+    /// `table_create_entity`, as `drop_entity` with `create_entity`.
+    table_drop_entity: Option<String>,
+
     grouping_fn: Option<String>,
 
     /// Expression for the dialect's natural row identity, used for unsorted
     /// view order and natural-order window frames — `rowid` (DuckDB, the
     /// default) or `ctid` (Postgres). Dialects with no such pseudo-column
-    /// (ClickHouse) should advertise `unordered` instead.
+    /// (ClickHouse) set [`Self::unordered`] instead.
     row_id_expr: Option<String>,
+
+    /// Whether the dialect has NO natural row identity (ClickHouse), so the
+    /// builder must never reference `row_id_expr`: an unsorted view takes no
+    /// default `ORDER BY` (its order is whatever the engine scans), and a
+    /// split-only pivot numbers its rows with `ROW_NUMBER() OVER ()`. Pair
+    /// with the handler's `unordered` feature, which rejects windows without
+    /// an explicit `order_by` before they reach the builder.
+    unordered: Option<bool>,
 
     /// Separator joining `split_by` values and the column name in pivoted
     /// view column names, e.g. `"CA|Sales"` for separator `"|"`. Perspective's
@@ -131,6 +152,13 @@ pub struct GenericSQLVirtualServerModelArgs {
     /// Template wrapping a `SELECT` so the dialect PLANS it and reports its
     /// result columns without executing it; `{}` is the query.
     describe_template: Option<String>,
+
+    /// Whether the dialect folds unquoted identifiers to lower case
+    /// (Postgres), so [`GenericSQLVirtualServerModel::table_path`] must
+    /// quote any path part with an upper-case letter to keep it resolving
+    /// to the same relation. Case-insensitive (DuckDB) and case-preserving
+    /// (ClickHouse) dialects omit it.
+    folds_unquoted_to_lower: Option<bool>,
 
     /// Whether views carry a `__HIDDEN__` column, `UPDATE`d in place by
     /// [`GenericSQLVirtualServerModel::view_expand`] and friends, which
@@ -281,6 +309,7 @@ impl GenericSQLVirtualServerModel {
              r.lo AND v.{row_id} < r.hi AND {depth} = r.depth + 1 AND v.\"__HIDDEN__\"",
             view_ref = entity_ref(view_id),
             target = self.expansion_target_sql(view_id, config, row_index)?,
+            view_id = quote_entity(view_id),
             depth = self.row_depth_sql(config, "v."),
         ))
     }
@@ -303,6 +332,7 @@ impl GenericSQLVirtualServerModel {
              r.lo AND v.{row_id} < r.hi AND NOT v.\"__HIDDEN__\"",
             view_ref = entity_ref(view_id),
             target = self.expansion_target_sql(view_id, config, row_index)?,
+            view_id = quote_entity(view_id),
         ))
     }
 
@@ -324,6 +354,39 @@ impl GenericSQLVirtualServerModel {
             self.row_depth_sql(config, ""),
             depth as u64 + 1
         ))
+    }
+
+    /// Renders a hosted table's relation path - e.g. `["memory", "main",
+    /// "trades"]` - as its entity id: parts joined with `.`, each quoted
+    /// only when it is not a bare identifier, so that SQL-safe names read as
+    /// they always have (`memory.trades`) and every other name is still a
+    /// relation reference the builder passes through verbatim.
+    pub fn table_path(&self, parts: &[&str]) -> GenericSQLResult<String> {
+        if parts.is_empty() || parts.iter().any(|x| x.is_empty()) {
+            return Err(GenericSQLError::InvalidConfig(format!(
+                "Invalid table path {parts:?}"
+            )));
+        }
+
+        let folds = self.0.folds_unquoted_to_lower.unwrap_or(false);
+        Ok(parts
+            .iter()
+            .map(|part| {
+                if is_bare_ident(part) && !(folds && part.chars().any(char::is_uppercase)) {
+                    (*part).to_owned()
+                } else {
+                    format!("\"{}\"", quote_ident(part))
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("."))
+    }
+
+    /// Returns the SQL relation reference for an entity id - a hosted
+    /// table's path verbatim, any other name quoted whole - for handlers
+    /// that build their own queries against an entity.
+    pub fn quote_entity(&self, entity_id: &str) -> GenericSQLResult<String> {
+        Ok(quote_entity(entity_id))
     }
 
     /// Returns the SQL query to list all hosted tables.
@@ -456,7 +519,7 @@ impl GenericSQLVirtualServerModel {
         }
 
         let ctx = ViewQueryContext::new(self, table_id, &folded, schema)?;
-        Ok(Some(self.describe_wrap(&ctx.build_query())))
+        Ok(Some(self.describe_wrap(&ctx.build_query_unordered())))
     }
 
     /// Returns the SQL query to delete a view.
@@ -468,7 +531,31 @@ impl GenericSQLVirtualServerModel {
     /// SQL: `DROP {drop_entity} IF EXISTS {view_id}`
     pub fn view_delete(&self, view_id: &str) -> GenericSQLResult<String> {
         let entity = self.0.drop_entity.as_deref().unwrap_or("TABLE");
-        Ok(format!("DROP {} IF EXISTS {}", entity, entity_ref(view_id)))
+        Ok(format!(
+            "DROP {} IF EXISTS {}",
+            entity,
+            entity_ref(view_id)
+        ))
+    }
+
+    /// Returns the SQL query to delete a table made by
+    /// [`Self::view_make_table`].
+    ///
+    /// # Returns
+    /// SQL: `DROP {table_drop_entity} IF EXISTS {table_id}`
+    pub fn table_delete(&self, table_id: &str) -> GenericSQLResult<String> {
+        let entity = self
+            .0
+            .table_drop_entity
+            .as_deref()
+            .or(self.0.drop_entity.as_deref())
+            .unwrap_or("TABLE");
+
+        Ok(format!(
+            "DROP {} IF EXISTS {}",
+            entity,
+            entity_ref(table_id)
+        ))
     }
 
     /// Returns the SQL query to create a view from a table with the given
@@ -586,7 +673,13 @@ impl GenericSQLVirtualServerModel {
                 .collect::<GenericSQLResult<Vec<_>>>()?,
         };
 
-        let template = self.0.create_entity.as_deref().unwrap_or("TABLE");
+        let template = self
+            .0
+            .table_create_entity
+            .as_deref()
+            .or(self.0.create_entity.as_deref())
+            .unwrap_or("TABLE");
+
         Ok(format!(
             "CREATE {} {} AS (SELECT {} FROM {})",
             template,

@@ -49,6 +49,10 @@ import { AreaGlyph } from "./glyphs/draw-areas.ts";
 import { createQuadCornerBuffer } from "../../webgl/instanced-attrs.ts";
 import { compileProgram } from "../../webgl/program-cache.ts";
 import { expandDomainInPlace } from "../common/expand-domain.ts";
+import {
+    lastGroupBySplit,
+    type LastGroupBySplit,
+} from "../../data/last-group-by-split.ts";
 import barVert from "../../shaders/bar.vert.glsl";
 import barFrag from "../../shaders/bar.frag.glsl";
 
@@ -144,7 +148,13 @@ export class SeriesChart extends CategoricalYChart {
     // `_autoFitValue` all live on `CategoricalYChart`.
     _aggregates: string[] = [];
     _splitPrefixes: string[] = [];
+
+    _facetPrefixes: string[] = [];
     _series: SeriesInfo[] = [];
+
+    _effectiveGroupBy: string[] = [];
+
+    _lastGroupBySplit: LastGroupBySplit | null = null;
 
     /**
      * Whether the CURRENT build's geometry was produced for facet-grid
@@ -534,6 +544,26 @@ export class SeriesChart extends CategoricalYChart {
                 ? [this._categoryPositions[b.catIdx] ?? null]
                 : this._rowPaths.map((level) => level.labels[b.catIdx] ?? null);
         const splitKey = this._splitPrefixes[b.splitIdx] ?? "";
+        const last = this._lastGroupBySplit;
+        if (last) {
+            const entry = last.prefixes.get(splitKey);
+            const V = last.values.length;
+            const row = entry
+                ? last.sourceRow[(b.catIdx + this._rowOffset) * V + entry.value]
+                : -1;
+
+            groupByValues.push(entry ? last.values[entry.value] : null);
+            await this.emitClickAndSelect({
+                rowIdx: row >= 0 ? row : null,
+                columnName: this._aggregates[b.aggIdx],
+                groupByValues,
+                splitByValues:
+                    entry && entry.facet !== "" ? entry.facet.split("|") : [],
+            });
+
+            return;
+        }
+
         const splitByValues =
             this._splitBy.length > 0 && splitKey !== ""
                 ? splitKey.split("|")
@@ -592,15 +622,39 @@ export class SeriesChart extends CategoricalYChart {
             this._cornerBuffer = createQuadCornerBuffer(gl);
         }
 
-        const facetSplits =
-            this._splitBy.length > 0 && this._facetConfig.facet_mode === "grid";
+        const levelTypes = this._groupBy.map(
+            (name) => this._groupByTypes[name] ?? "string",
+        );
+        const lastSplit =
+            this._pluginConfig.group_by_series === "last_group_by"
+                ? lastGroupBySplit(
+                      columns,
+                      endRow,
+                      this._groupBy,
+                      levelTypes,
+                      this._columnDateModifiers.get(
+                          this._groupBy[this._groupBy.length - 1],
+                      ),
+                  )
+                : null;
+
+        this._lastGroupBySplit = lastSplit;
+        this._effectiveGroupBy = lastSplit?.groupBy ?? this._groupBy;
+        const splitBy = lastSplit
+            ? [...this._splitBy, this._groupBy[this._groupBy.length - 1]]
+            : this._splitBy;
+
+        const facetSplits = lastSplit
+            ? this._splitBy.length > 0
+            : this._splitBy.length > 0 &&
+              this._facetConfig.facet_mode === "grid";
 
         const result = buildSeriesPipeline({
-            columns,
-            numRows: endRow,
+            columns: lastSplit?.columns ?? columns,
+            numRows: lastSplit?.numRows ?? endRow,
             columnSlots: this._columnSlots,
-            groupBy: this._groupBy,
-            splitBy: this._splitBy,
+            groupBy: this._effectiveGroupBy,
+            splitBy,
             groupByTypes: this._groupByTypes,
             dateModifiers: this._columnDateModifiers,
             columnsConfig: this._columnsConfig,
@@ -616,6 +670,9 @@ export class SeriesChart extends CategoricalYChart {
             groupPad: this._pluginConfig.group_pad,
             includeZero: this._pluginConfig.include_zero,
             facetSplits,
+            facetKeyOf: lastSplit
+                ? (prefix) => lastSplit.prefixes.get(prefix)?.facet ?? ""
+                : undefined,
             scratchBars: this._bars,
             scratchPosStack: this._posStackScratch,
             scratchNegStack: this._negStackScratch,
@@ -659,11 +716,12 @@ export class SeriesChart extends CategoricalYChart {
 
         this._aggregates = result.aggregates;
         this._splitPrefixes = result.splitPrefixes;
+        this._facetPrefixes = result.facetPrefixes;
 
         // Stamp AFTER the build so render always branches on the mode
         // the geometry was actually built for. A single "" prefix means
         // no real splits — facet mode degenerates to the single plot.
-        this._facetActive = facetSplits && result.splitPrefixes.length > 1;
+        this._facetActive = facetSplits && result.facetPrefixes.length > 1;
         this._rowPaths = result.rowPaths;
         this._numCategories = result.numCategories;
         this._rowOffset = result.rowOffset;
@@ -922,9 +980,13 @@ export function ensurePalette(chart: SeriesChart): boolean {
     const seriesPalette = theme.seriesPalette;
     const gradientStops = theme.gradientStops;
     const columnsConfig = chart._columnsConfig;
-    const paletteCount = chart._facetActive
-        ? Math.max(1, chart._aggregates.length)
-        : chart._series.length;
+    const lastValues = chart._lastGroupBySplit?.values.length ?? 0;
+    const perFacet = chart._facetActive && lastValues > 0;
+    const paletteCount = perFacet
+        ? Math.max(1, chart._aggregates.length) * lastValues
+        : chart._facetActive
+          ? Math.max(1, chart._aggregates.length)
+          : chart._series.length;
 
     const key = chart._paletteCacheKey;
     if (
@@ -953,11 +1015,20 @@ export function ensurePalette(chart: SeriesChart): boolean {
 
     for (let i = 0; i < chart._series.length; i++) {
         const series = chart._series[i];
-        const themed = chart._facetActive ? palette[series.aggIdx] : palette[i];
+        const value = perFacet
+            ? (chart._lastGroupBySplit!.prefixes.get(series.splitKey)?.value ?? 0)
+            : 0;
+
+        const themed = perFacet
+            ? palette[series.aggIdx * lastValues + value]
+            : chart._facetActive
+              ? palette[series.aggIdx]
+              : palette[i];
+
         series.color =
             resolveSeriesColorOverride(
-                series,
-                chart._facetActive,
+                perFacet ? { ...series, splitIdx: value } : series,
+                chart._facetActive && !perFacet,
                 columnsConfig,
             ) ?? themed;
     }

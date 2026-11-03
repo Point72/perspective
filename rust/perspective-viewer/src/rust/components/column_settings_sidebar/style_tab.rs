@@ -322,6 +322,7 @@ fn render_leaf(spec: ControlSpec, keys: &[String], ctx: &FieldRenderCtx) -> Opti
             key,
             variants,
             default,
+            ..
         } => {
             let current = raw_config
                 .as_ref()
@@ -400,7 +401,7 @@ fn render_leaf(spec: ControlSpec, keys: &[String], ctx: &FieldRenderCtx) -> Opti
                 />
             }
         },
-        ControlSpec::Bool { key, default } => {
+        ControlSpec::Bool { key, default, .. } => {
             let current = raw_config
                 .as_ref()
                 .and_then(|m| m.get(&key))
