@@ -11,6 +11,7 @@
  * ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ */
 
 @import "./defaults.css";
+@import "./pro/base.css";
 @import "./pro/light.css";
 
 perspective-viewer,
@@ -18,5 +19,6 @@ perspective-viewer[theme="Pro Light"],
 perspective-viewer [theme="Pro Light"] {
     --psp-theme-name: "Pro Light";
     color-scheme: light;
+    @apply pro-base;
     @apply pro-light;
 }

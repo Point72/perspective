@@ -1,0 +1,41 @@
+/* ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+ * ┃ ██████ ██████ ██████       █      █      █      █      █ █▄  ▀███ █       ┃
+ * ┃ ▄▄▄▄▄█ █▄▄▄▄▄ ▄▄▄▄▄█  ▀▀▀▀▀█▀▀▀▀▀ █ ▀▀▀▀▀█ ████████▌▐███ ███▄  ▀█ █ ▀▀▀▀▀ ┃
+ * ┃ █▀▀▀▀▀ █▀▀▀▀▀ █▀██▀▀ ▄▄▄▄▄ █ ▄▄▄▄▄█ ▄▄▄▄▄█ ████████▌▐███ █████▄   █ ▄▄▄▄▄ ┃
+ * ┃ █      ██████ █  ▀█▄       █ ██████      █      ███▌▐███ ███████▄ █       ┃
+ * ┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+ * ┃ Copyright (c) 2017, the Perspective Authors.                              ┃
+ * ┃ ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ ┃
+ * ┃ This file is part of the Perspective library, distributed under the terms ┃
+ * ┃ of the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). ┃
+ * ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ */
+
+/* Settings shared by every Pro palette: layout, fonts, labels and the few
+ * colors both palettes use. `pro.css`, `pro-light.css` and `pro-dark.css`
+ * each apply this before their palette, so that `pro/light.css` and
+ * `pro/dark.css` only hold the colors which differ between the two. */
+@mixin pro-base {
+    --psp-icon-overflow-hint--color: var(--psp-warning--color);
+    --psp-placeholder--background: #8b868045;
+    --psp-dropdown--box-shadow: 5px 5px 0 #00000020;
+    --psp-select--background-color: none;
+
+    --psp-button--font-size: 16px;
+    --psp-config-button--padding: 15px 8px 6px 8px;
+    --psp-column-selector--font-size: 16px;
+    --psp-column-type--width: 25px;
+    --psp-select--padding: 0px;
+    --psp-top-panel-row--display: inline-flex;
+    --psp-button--min-width: 33px;
+
+    font-family:
+        "ui-monospace", "SFMono-Regular", "SF Mono", "Menlo", "Consolas",
+        "Liberation Mono", monospace;
+    --psp-interface-monospace--font-family:
+        "ui-monospace", "SFMono-Regular", "SF Mono", "Menlo", "Consolas",
+        "Liberation Mono", monospace;
+
+    --psp-label--webgl-y1--content: "arrow_upward";
+    --psp-label--webgl-y2--content: "arrow_downward";
+    --psp-charts--treemap-axis--lines: none;
+}

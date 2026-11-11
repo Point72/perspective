@@ -11,6 +11,7 @@
  * ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ */
 
 @import "./defaults.css";
+@import "./pro/base.css";
 @import "./pro/light.css";
 @import "./pro/dark.css";
 
@@ -19,11 +20,16 @@ perspective-viewer[theme="Pro"],
 perspective-viewer [theme="Pro"] {
     --psp-theme-name: "Pro";
     color-scheme: light dark;
+    @apply pro-base;
     @apply pro-light;
 }
 
+/* Scoped to viewers that are themed "Pro" or not themed yet, rather than
+ * every `perspective-viewer`: the light rule above is the base every theme
+ * starts from, but `pro-dark` sets values (e.g. `--psp-calendar--filter`)
+ * that other themes leave unset, and would otherwise reach them in dark mode. */
 @media (prefers-color-scheme: dark) {
-    perspective-viewer,
+    perspective-viewer:not([theme]),
     perspective-viewer[theme="Pro"],
     perspective-viewer [theme="Pro"] {
         @apply pro-dark;
