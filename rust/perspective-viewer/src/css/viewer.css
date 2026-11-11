@@ -96,38 +96,25 @@
     position: absolute;
     inset: 0;
     background-color: var(--psp--background-color) !important;
+
+    /* Background FILL only (in the panel's own theme) for the 4px of frame
+       padding around the plugin: reaches 4px left, right and down, 0px up
+       (the titlebar is above). The 1px separator lines are real borders on
+       the frame (see `.rl-panel::after`), NOT shadows - shadow geometry is not
+       snapped to device pixels, so shadow-drawn lines blur at 1x/125%/150%.
+       Keep these offsets whole pixels and ending exactly at the line. */
     box-shadow:
-        2.25px 2.25px 0 2.25px var(--psp--background-color),
-        /* down-right */ -2.25px 2.25px 0 2.25px var(--psp--background-color),
-        /* down-left */ 2.75px 2.75px 0 2.75px var(--psp-inactive--color),
-        -1.75px 2.75px 0 2.75px var(--psp-inactive--color);
+        2px 2px 0 2px var(--psp--background-color),
+        -2px 2px 0 2px var(--psp--background-color);
 }
 
-.overlay
-    ::slotted(
-        :not([slot^="statusbar-extra"]):not([slot^="tab-"]):not([slot="modal"])
-    ) {
-    box-shadow:
-        2.25px 2.25px 0 2.25px var(--psp--background-color),
-        -2.25px 2.25px 0 2.25px var(--psp--background-color),
-        2.75px 2.75px 0 2.75px var(--psp-inactive--color),
-        -2.75px 2.75px 0 2.75px var(--psp-inactive--color);
-}
-
+/* Tab fill: reaches 4px up, left and right, 0px down. The 1px divider to the
+   right of the front tab is a real border (`:host(.visible)::after` in
+   panel-tab.css), not a shadow. */
 ::slotted([part="tab"].visible) {
     box-shadow:
-        2.25px -2.25px 0 2.25px var(--psp--background-color),
-        -2.25px -2.25px 0 2.25px var(--psp--background-color),
-        3.5px -2.25px 0 2.25px var(--psp-inactive--color),
-        0 12.5px 0 -11.5px var(--psp-inactive--border-color);
-}
-
-.overlay ::slotted([part="tab"].visible) {
-    box-shadow:
-        2.25px -2.25px 0 2.25px var(--psp--background-color),
-        -2.25px -2.25px 0 2.25px var(--psp--background-color),
-        2.75px -2.75px 0 2.75px var(--psp-inactive--color),
-        -2.75px -2.75px 0 2.75px var(--psp-inactive--color),
+        2px -2px 0 2px var(--psp--background-color),
+        -2px -2px 0 2px var(--psp--background-color),
         0 12.5px 0 -11.5px var(--psp-inactive--border-color);
 }
 
@@ -373,20 +360,69 @@
             height: 100%;
         }
 
-        /* The layout engine hosting this panel's plugin fills the container. */
+        /* The layout engine hosting the panels fills the container.
+
+           Panel separators: frames TILE their grid cells (no margin) and each
+           draws a real 1px border on its LEFT and TOP edge only (`::after`),
+           so every internal boundary gets exactly one line; borders (unlike
+           box-shadows) are snapped to whole device pixels at any DPR. The
+           leading inset (-4px) pushes the outermost left/top lines outside
+           `#main_panel_container`'s `overflow: hidden`, so the layout itself
+           has no outer border; the trailing inset (-3px) leaves the plugins
+           the same ~1px outer gutter on every side. */
         & regular-layout {
             position: absolute;
-            inset: -4px -4px -4px -4px;
+            inset: -4px -3px -3px -4px;
             box-sizing: border-box;
             padding: 0px;
             background: var(--psp--background-color, transparent);
 
+            /* The padding is the resize grab band: regular-layout only starts
+               a divider drag when `event.target` is the layout itself, which
+               works because `regular-layout-frame` is `pointer-events: none`
+               outside its container/tabs. Do NOT set `pointer-events` here.
+               left/top = 1px line + 4px fill; right/bottom = 4px fill. */
             & > .rl-panel {
                 position: relative;
                 box-sizing: border-box;
                 background: none;
-                border: 1px solid transparent;
-                margin: var(--psp-panel--margin, 4px);
+                border: none;
+                margin: 0;
+                padding: 5px 4px 4px 5px;
+
+                /* Own stacking context, so the line below can sit above the
+                   front tab (z-index 6) without escaping the frame and
+                   painting over a dragged (overlay) panel. */
+                isolation: isolate;
+
+                /* Clip to the grid cell. Every fill ends exactly at the frame
+                   edge, so the only paint outside it is the front tab's
+                   divider (panel-tab.css `::after`) when that tab is LAST in
+                   its stack: it would double up on the right-hand
+                   neighbour's left line. `clip`, not `hidden`: no scroll
+                   container. */
+                overflow: clip;
+            }
+
+            /* The separator line, painted ON TOP of the fills: at fractional
+               DPRs the whole-px fills can overlap it by a sub-pixel, and
+               this keeps the line crisp regardless. */
+            & > .rl-panel::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                z-index: 7;
+                box-sizing: border-box;
+                border: 0 solid var(--psp-inactive--color);
+                border-width: 1px 0 0 1px;
+                pointer-events: none;
+            }
+
+            /* A dragged panel floats over the grid: border all 4 sides. The
+               right/bottom lines paint over the outer pixel of the 4px fill,
+               so the plugin size doesn't change. */
+            & > .rl-panel.overlay::after {
+                border-width: 1px;
             }
 
             & > .rl-panel::part(container) {
@@ -395,8 +431,9 @@
                 /* box-shadow: 0 0 0 4.5px var(--psp--background-color); */
             }
 
+            /* 4px fill + 1px divider + 4px fill (see the tab box-shadows). */
             & > .rl-panel::part(titlebar-track) {
-                gap: 10px;
+                gap: 9px;
             }
 
             & > .rl-panel::part(titlebar) {

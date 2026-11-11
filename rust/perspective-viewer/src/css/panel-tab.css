@@ -21,12 +21,23 @@
     cursor: pointer;
     font-size: 11px;
     white-space: nowrap;
-    overflow: hidden;
+
+    /* Clip overflowing content, but allow the 4px fill shadows and the 1px
+       divider (`::after`, 4-5px right of the tab) to paint outside the tab.
+       `overflow: hidden` would clip the divider (a child box); `clip-path`
+       clips at 6px out instead, 1px clear of the divider so its edge isn't
+       cut by an un-snapped clip. Content can show at most 6px past the
+       tab, mostly under the fill and the divider. */
+    clip-path: inset(-6px);
+    position: relative;
     color: var(--psp--color, inherit);
     background: var(--psp-inactive--border-color, #ffffff) !important;
+    /* Whole-pixel fill reaching 4px up/left/right, so it abuts (never
+       overlaps) the frame's 1px separator lines and the 9px titlebar gap
+       (see viewer.css `.rl-panel`). */
     box-shadow:
-        2.25px -2.25px 0 2.25px var(--psp-inactive--border-color),
-        -2.25px -2.25px 0 2.25px var(--psp-inactive--border-color);
+        2px -2px 0 2px var(--psp-inactive--border-color),
+        -2px -2px 0 2px var(--psp-inactive--border-color);
 }
 
 :host([part~="tab"].visible) {
@@ -37,6 +48,24 @@
         -2.25px -2.25px 0 2.25px var(--psp--background-color),
         2.75px -2.75px 0 2.75px var(--psp-inactive--color),
         0 12.5px 0 -11.5px var(--psp-inactive--border-color); */
+}
+
+/* The 1px divider to the right of a stack's front tab: a real border (snapped
+   to device pixels like the frame lines), centred in the 9px titlebar-track
+   gap (4px fill + 1px line + 4px neighbour fill). It runs from just below the
+   panel's top line (4px above the tab) to the tab's bottom. For the LAST tab
+   in a stack it lands outside the frame and is clipped by `.rl-panel
+   { overflow: clip }`, leaving the neighbour panel's own line. Ignores the
+   pointer, so the resize grab band in the gap still reaches the layout. */
+:host([part~="tab"].visible)::after {
+    content: "";
+    position: absolute;
+    top: -4px;
+    bottom: 0;
+    right: -5px;
+    width: 0;
+    border-left: 1px solid var(--psp-inactive--color);
+    pointer-events: none;
 }
 
 .psp-tab-grip {
