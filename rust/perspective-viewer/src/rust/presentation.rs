@@ -74,7 +74,12 @@ pub struct PresentationHandle {
 
     /// The available themes as detected in the browser environment or set
     /// explicitly when CORS prevents detection.
-    themes: RefCell<Option<Vec<String>>>,
+    themes: RefCell<Option<PtrEqRc<Vec<String>>>>,
+
+    /// The [`sheets::fingerprint`] the memoized [`Self::themes`] was parsed
+    /// under, or `None` when the set was given explicitly and must not be
+    /// re-parsed.
+    theme_fingerprint: Cell<Option<u32>>,
 
     /// Single-flight guard for the stylesheet parse that populates
     /// [`Self::themes`] (and exclusion against `reset_available_themes`) —
@@ -161,6 +166,7 @@ impl Presentation {
             agent: Default::default(),
             themes: Default::default(),
             theme_init: Default::default(),
+            theme_fingerprint: Cell::new(None),
             theme_selected: Cell::new(elem.get_attribute("theme").is_some()),
             palette: Default::default(),
             is_workspace: Default::default(),
@@ -360,34 +366,53 @@ impl Presentation {
     }
 
     /// Get the available theme names from the browser environment by parsing
-    /// readable stylesheets.  This method is memoized - the state can be
-    /// flushed by calling `reset()`.
+    /// readable stylesheets, memoized until the stylesheet count changes or
+    /// the state is flushed by `reset()`.
     pub async fn get_available_themes(&self) -> ApiResult<PtrEqRc<Vec<String>>> {
         let _guard = self.0.theme_init.lock().await;
-        if self.0.themes.borrow().is_none() {
+        let stale = match (
+            self.0.themes.borrow().is_some(),
+            self.0.theme_fingerprint.get(),
+        ) {
+            (false, _) => true,
+            (true, Some(seen)) => seen != sheets::fingerprint(&self.0.viewer_elem),
+            (true, None) => false,
+        };
+
+        if stale {
             await_dom_loaded().await?;
-            let themes = sheets::get_theme_names(&self.0.viewer_elem)?;
-            *self.0.themes.borrow_mut() = Some(themes);
+            let names = sheets::get_theme_names(&self.0.viewer_elem);
+            self.0
+                .theme_fingerprint
+                .set(Some(sheets::fingerprint(&self.0.viewer_elem)));
+
+            let mut slot = self.0.themes.borrow_mut();
+            if slot.as_ref().is_none_or(|x| **x != names) {
+                *slot = Some(names.into());
+            }
         }
 
-        Ok(self.0.themes.borrow().clone().unwrap().into())
+        Ok(self.0.themes.borrow().clone().unwrap())
     }
 
     /// Reset the state.  `styleSheets` will be re-parsed next time
-    /// `get_themes()` is called if the `themes` argument is `None`.
+    /// `get_themes()` is called if the `themes` argument is `None`, and an
+    /// explicit `themes` list is held until the next reset.
     ///
     /// # Returns
     /// A `bool` indicating whether the internal state changed.
     pub async fn reset_available_themes(&self, themes: Option<Vec<String>>) -> bool {
-        fn as_set(x: &Option<Vec<String>>) -> HashSet<&'_ String> {
-            x.as_ref()
-                .map(|x| x.iter().collect::<HashSet<_>>())
+        fn as_set(x: Option<&[String]>) -> HashSet<&'_ String> {
+            x.map(|x| x.iter().collect::<HashSet<_>>())
                 .unwrap_or_default()
         }
 
         let _guard = self.0.theme_init.lock().await;
-        let changed = as_set(&self.0.themes.borrow()) != as_set(&themes);
-        *self.0.themes.borrow_mut() = themes;
+        let current = self.0.themes.borrow();
+        let changed = as_set(current.as_ref().map(|x| x.as_slice())) != as_set(themes.as_deref());
+        drop(current);
+        self.0.theme_fingerprint.set(None);
+        *self.0.themes.borrow_mut() = themes.map(PtrEqRc::new);
         changed
     }
 

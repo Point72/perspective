@@ -43,8 +43,11 @@ these themes directly into your app, and the `perspective-viewer`s will be
 themed accordingly:
 
 ```javascript
-// Themes based on Thought Merchants's Prospective design
+// Themes based on Thought Merchants's Prospective design. `pro.css` ("Pro")
+// follows the browser's `prefers-color-scheme`; `pro-light.css` ("Pro Light")
+// and `pro-dark.css` ("Pro Dark") pin one palette.
 import "@perspective-dev/viewer/dist/css/pro.css";
+import "@perspective-dev/viewer/dist/css/pro-light.css";
 import "@perspective-dev/viewer/dist/css/pro-dark.css";
 
 // Other themes

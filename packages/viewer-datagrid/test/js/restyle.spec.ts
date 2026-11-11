@@ -27,7 +27,7 @@ async function goto_ready(page: any) {
             await new Promise((x) => setTimeout(x, 10));
         }
 
-        // `basic-test.html` loads only `pro.css` (= "Pro Light"); "Pro Dark"
+        // `basic-test.html` loads only `pro-light.css` (= "Pro Light"); "Pro Dark"
         // is a separate stylesheet, without which a theme switch changes no
         // CSS at all.
         await new Promise((resolve, reject) => {
